@@ -1,4 +1,5 @@
+.DS_Store
 .venv
 data/minio_data/*
 !.gitkeep
-/2024.xlsx
+/files
