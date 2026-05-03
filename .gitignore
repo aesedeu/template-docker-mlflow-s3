@@ -3,3 +3,4 @@
 data/minio_data/*
 !.gitkeep
 /files
+catboost_info

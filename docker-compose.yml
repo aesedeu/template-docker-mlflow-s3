@@ -1,12 +1,13 @@
-version: '3.6'
-
 services:
   postgres:
+    container_name: postgres
     env_file:
       - ./.env
     image: postgres:16.2
     networks:
       - internal
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -14,29 +15,37 @@ services:
     volumes:
       - ./build/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-  mlflow:
-    build:
-      context: ./build/
-      dockerfile: Dockerfile
-    image: mlflow_server:1.0
-    depends_on:
-      - postgres
-    ports:
-      - "${MLFLOW_PORT}:5000"
+  mlflow-service:
+    image: ghcr.io/mlflow/mlflow:v2.15.1
     env_file:
       - ./.env
-    networks:
-      - internal
     environment:
-      MLFLOW_AUTH_CONFIG_PATH: /basic_auth.ini
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       DEFAULT_BUCKET_NAME: ${DEFAULT_BUCKET_NAME}
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-    entrypoint: bash -c "mlflow server --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB} --default-artifact-root s3://${DEFAULT_BUCKET_NAME} --host 0.0.0.0 --port 5000 --app-name basic-auth"
-    # volumes:
-    #   - ./build/basic_auth.ini:/basic_auth.ini
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      # AWS_DEFAULT_REGION: ru-central1
+    command:
+      - bash
+      - -c
+      - |
+        pip install boto3 psycopg2-binary --quiet
+        mlflow server --host 0.0.0.0 --port 5000 \
+            --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB} \
+            --default-artifact-root s3://mlflow-bucket/mlflow \
+            --artifacts-destination s3://mlflow-bucket/mlflow \
+            --serve-artifacts
+    expose:
+      - "5000"
+    ports:
+      - "5050:5000"
+    networks:
+      - internal
+    volumes:
+      # - mlflow-data:/mlflow
+      - ./data/mlflow:/mlflow
 
   minio:
     image: quay.io/minio/minio
@@ -82,6 +91,12 @@ services:
     restart: on-failure
 
 volumes:
+  mlflow-data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ./data/mlflow_data
   minio_data:
     driver: local
     driver_opts:
